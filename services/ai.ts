@@ -1,62 +1,63 @@
 // services/ai.ts
-// We use dynamic imports to prevent the application from crashing on startup
-// if the SDK fails to load or if the environment is not perfectly configured.
+// IMPORTANT: This file runs in the browser (Vite). Do NOT read GEMINI_API_KEY here.
+// All Gemini calls must go through Vercel Serverless: /api/gemini
 
 import type { HomeworkResponse, MathPlaygroundResponse } from "../types";
 
 // ---------------------------
-// Gemini Config (ENV controlled)
+// Gemini Config (server-controlled)
 // ---------------------------
-const ENV_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
-const ENV_MODEL   = (import.meta as any).env?.VITE_GEMINI_MODEL as string | undefined;
-
-const GEMINI_MODEL = ENV_MODEL?.trim() || "gemini-3-pro-preview";
-
+// Model is NOT sensitive, but we still keep a default here.
+// If you set GEMINI_MODEL on Vercel server env, the server will prefer that unless you override.
+const DEFAULT_MODEL = "gemini-3-pro-preview";
 
 // ---------------------------
-// SDK loader + Client factory
+// Shared helper: call our serverless proxy
 // ---------------------------
-type GoogleGenAIConstructor = new (args: { apiKey: string }) => {
-  models: {
-    generateContent: (args: any) => Promise<{ text?: string }>;
+type GeminiRole = "user" | "model";
+
+type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+type GeminiContent = { role: GeminiRole; parts: GeminiPart[] };
+
+type ProxyRequest = {
+  model?: string;
+  temperature?: number;
+  responseMimeType?: string;
+  contents: GeminiContent[] | GeminiContent; // we normalize to array
+};
+
+async function callGeminiProxy<T = { text: string; raw?: any }>(payload: ProxyRequest): Promise<T> {
+  const normalized: ProxyRequest = {
+    ...payload,
+    contents: Array.isArray(payload.contents) ? payload.contents : [payload.contents],
+    model: payload.model?.trim() || DEFAULT_MODEL,
   };
-};
 
-/**
- * Load Google GenAI SDK dynamically with fallbacks.
- */
-const loadGoogleGenAI = async (): Promise<GoogleGenAIConstructor> => {
-  const module = await import("@google/genai");
-  return module.GoogleGenAI as GoogleGenAIConstructor;
-};
+  const r = await fetch("/api/gemini", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(normalized),
+  });
 
-/**
- * Helper to get the AI client safely (env only).
- */
-const getAIClient = async () => {
-  const GoogleGenAI = await loadGoogleGenAI();
+  const data = await r.json().catch(() => ({}));
 
-  const apiKey = ENV_API_KEY?.trim();
-
-  if (!apiKey) {
-    throw new Error(
-      "Missing VITE_GEMINI_API_KEY. Please set it in .env.local or your deployment environment variables."
-    );
+  if (!r.ok) {
+    const msg = data?.error || `Gemini proxy failed (${r.status})`;
+    throw new Error(msg);
   }
 
-  return new GoogleGenAI({ apiKey });
-};
+  return data as T;
+}
 
 // ---------------------------
 // 1) Simplify text
 // ---------------------------
 export const getSimplifiedText = async (text: string): Promise<string> => {
   try {
-    const ai = await getAIClient();
-
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `You are a specialized accessibility assistant for students with learning disabilities (Dyslexia, ADHD, Processing Disorders).
+    const prompt = `You are a specialized accessibility assistant for students with learning disabilities (Dyslexia, ADHD, Processing Disorders).
 
 Your task: Rewrite the provided text into "Simple Mode".
 
@@ -70,24 +71,17 @@ STRICT RULES:
 7. **Output**: Return ONLY the simplified text. Do not add headers like "Simplified Version:".
 
 Text to simplify:
-${text}`,
-      config: {
-        temperature: 0.3,
-      },
+${text}`;
+
+    const res = await callGeminiProxy<{ text: string }>({
+      temperature: 0.3,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
-    return response.text || "";
+    return res.text || "";
   } catch (error: any) {
     console.error("AI Simplification Service Failed:", error);
-
-    if (error.message?.includes("Failed to load")) {
-      throw new Error("Could not load AI library. Please disable ad blockers or check connection.");
-    }
-    if (error.message?.includes("Missing VITE_GEMINI_API_KEY")) {
-      throw new Error("Missing API Key. Please set VITE_GEMINI_API_KEY.");
-    }
-
-    throw new Error(error.message || "Could not connect to AI service. Please try again later.");
+    throw new Error(error?.message || "Could not connect to AI service. Please try again later.");
   }
 };
 
@@ -114,8 +108,6 @@ export interface VisualStructure {
 
 export const getVisualBreakdown = async (text: string): Promise<VisualStructure> => {
   try {
-    const ai = await getAIClient();
-
     const prompt = `
 You are an expert visual learning specialist for students with LD.
 Analyze the text and create a Visual Structure (Mind Map + Steps).
@@ -157,16 +149,13 @@ Text to visualize:
 ${text}
 `;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.2,
-      },
+    const res = await callGeminiProxy<{ text: string }>({
+      responseMimeType: "application/json",
+      temperature: 0.2,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
-    const jsonText = response.text || "{}";
+    const jsonText = res.text || "{}";
     return JSON.parse(jsonText) as VisualStructure;
   } catch (error: any) {
     console.error("AI Visualizer Failed:", error);
@@ -185,8 +174,6 @@ export interface TaskStep {
 
 export const getTaskBreakdown = async (task: string): Promise<TaskStep[]> => {
   try {
-    const ai = await getAIClient();
-
     const prompt = `
 You are an expert ADHD coach. The user feels overwhelmed by a task.
 Your goal: Break this task down into 3-6 tiny, non-scary, actionable steps.
@@ -205,18 +192,15 @@ JSON Schema:
 ]
 `;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.4,
-      },
+    const res = await callGeminiProxy<{ text: string }>({
+      responseMimeType: "application/json",
+      temperature: 0.4,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
-    const steps = JSON.parse(response.text || "[]");
+    const steps = JSON.parse(res.text || "[]");
 
-    return steps.map((s: any, idx: number) => ({
+    return (steps as any[]).map((s: any, idx: number) => ({
       id: `step-${Date.now()}-${idx}`,
       text: s.text,
       durationMin: s.durationMin || 5,
@@ -235,7 +219,6 @@ export const generateTeacherMaterial = async (
   type: "sentences" | "analogy" | "vocab" | "checklist"
 ): Promise<string> => {
   try {
-    const ai = await getAIClient();
     let prompt = "";
 
     switch (type) {
@@ -253,13 +236,12 @@ export const generateTeacherMaterial = async (
         break;
     }
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: { temperature: 0.4 },
+    const res = await callGeminiProxy<{ text: string }>({
+      temperature: 0.4,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
-    return response.text || "No content generated.";
+    return res.text || "No content generated.";
   } catch (error: any) {
     console.error("Teacher Generator Failed", error);
     throw new Error("Generation failed.");
@@ -271,13 +253,17 @@ export const generateTeacherMaterial = async (
 // ---------------------------
 export const generateWritingIdea = async (): Promise<string> => {
   try {
-    const ai = await getAIClient();
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: "Give me one creative, fun, and weird writing prompt for a student. Just the prompt, max 15 words.",
-      config: { temperature: 0.9 },
+    const res = await callGeminiProxy<{ text: string }>({
+      temperature: 0.9,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: "Give me one creative, fun, and weird writing prompt for a student. Just the prompt, max 15 words." }],
+        },
+      ],
     });
-    return response.text || "Write about a flying taco.";
+
+    return res.text || "Write about a flying taco.";
   } catch {
     return "Write about a secret door in your school.";
   }
@@ -297,8 +283,6 @@ export const sendChatToCoach = async (
   pageContext: string | null
 ): Promise<string> => {
   try {
-    const ai = await getAIClient();
-
     const systemPrompt = `
 You are a friendly, patient, and encouraging Learning Coach designed to help students with learning differences (Dyslexia, ADHD, etc.).
 
@@ -322,20 +306,19 @@ FORMATTING:
 - Keep responses visually clean (paragraphs under 3 lines).
 `;
 
-    const contents = [
+    const contents: GeminiContent[] = [
       { role: "user", parts: [{ text: systemPrompt }] },
       { role: "model", parts: [{ text: "Got it! I am ready to help." }] },
       ...history.map((msg) => ({ role: msg.role, parts: [{ text: msg.text }] })),
       { role: "user", parts: [{ text: newMessage }] },
     ];
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+    const res = await callGeminiProxy<{ text: string }>({
+      temperature: 0.5,
       contents,
-      config: { temperature: 0.5 },
     });
 
-    return response.text || "I'm having trouble thinking right now. Try again?";
+    return res.text || "I'm having trouble thinking right now. Try again?";
   } catch (error: any) {
     console.error("Chat Error", error);
     return "Oops! My brain froze for a second. Can you say that again?";
@@ -347,8 +330,6 @@ FORMATTING:
 // ---------------------------
 export const analyzeHomeworkImage = async (base64Image: string): Promise<HomeworkResponse> => {
   try {
-    const ai = await getAIClient();
-
     const cleanBase64 = base64Image.split(",")[1];
     const mimeType = base64Image.substring(base64Image.indexOf(":") + 1, base64Image.indexOf(";"));
 
@@ -382,21 +363,25 @@ Return JSON format:
 }
 `;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: {
+    // Gemini content with inlineData must be sent from server (key stays server-side).
+    // We send it to /api/gemini as contents.
+    const contents: GeminiContent[] = [
+      {
+        role: "user",
         parts: [
           { inlineData: { mimeType: mimeType || "image/jpeg", data: cleanBase64 } },
           { text: prompt },
         ],
       },
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.3,
-      },
+    ];
+
+    const res = await callGeminiProxy<{ text: string }>({
+      responseMimeType: "application/json",
+      temperature: 0.3,
+      contents,
     });
 
-    return JSON.parse(response.text || "{}") as HomeworkResponse;
+    return JSON.parse(res.text || "{}") as HomeworkResponse;
   } catch (error: any) {
     console.error("Homework Analysis Failed:", error);
     throw new Error("Could not analyze image. " + (error.message || ""));
@@ -408,8 +393,6 @@ Return JSON format:
 // ---------------------------
 export const askMathCoach = async (input: string, imageBase64?: string): Promise<MathPlaygroundResponse> => {
   try {
-    const ai = await getAIClient();
-
     const systemPrompt = `
 You are an interactive Visual Math Coach.
 
@@ -437,7 +420,7 @@ Drawing Actions:
 - rect, circle, line, text.
 `;
 
-    const parts: any[] = [{ text: input }];
+    const parts: GeminiPart[] = [{ text: input }];
 
     if (imageBase64) {
       const cleanBase64 = imageBase64.split(",")[1];
@@ -445,20 +428,19 @@ Drawing Actions:
       parts.unshift({ text: "Here is what the user drew on the whiteboard:" });
     }
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [
-        { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "I understand. I will provide JSON drawing actions." }] },
-        { role: "user", parts },
-      ],
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.2,
-      },
+    const contents: GeminiContent[] = [
+      { role: "user", parts: [{ text: systemPrompt }] },
+      { role: "model", parts: [{ text: "I understand. I will provide JSON drawing actions." }] },
+      { role: "user", parts },
+    ];
+
+    const res = await callGeminiProxy<{ text: string }>({
+      responseMimeType: "application/json",
+      temperature: 0.2,
+      contents,
     });
 
-    const text = response.text || "{}";
+    const text = res.text || "{}";
     return JSON.parse(text) as MathPlaygroundResponse;
   } catch (error: any) {
     console.error("Math Coach Failed:", error);
