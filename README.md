@@ -4,7 +4,7 @@
 
 **Demo Video:** https://youtu.be/WBUIakMCIl0  
 **Public AI Studio App:** https://ai.studio/apps/drive/1vEyn_bwhbdFoCUuyqOFPy5h6jzRdK8Pw?fullscreenApplet=true  
-
+**Official Website:** https://lexi-learning.vercel.app/
 
 ## Overview
 
