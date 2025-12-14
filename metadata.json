@@ -1,0 +1,7 @@
+{
+  "name": "Lexi - The Neurodiverse Learning Coach",
+  "description": "A centralized, accessible educational platform supporting students with learning disabilities, parents, teachers, and adult learners with practical tools and resources.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
