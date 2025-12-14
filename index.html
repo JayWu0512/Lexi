@@ -1,103 +1,75 @@
-
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LD Support Hub</title>
+    <title>Lexi</title>
+
+    <link rel="icon" href="/assets/logo.png" />
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
     <script>
-      // Robust polyfill for process/Buffer to prevent runtime crashes in browser
+      // Optional: minimal polyfill only (NO API KEY here)
       window.process = window.process || {};
       window.process.env = window.process.env || {};
-      window.process.env.API_KEY = "AIzaSyDNmSmnWNGebT6IZXi2IREH6G_u1yRqfqU";
-      window.process.version = window.process.version || '';
+      window.process.version = window.process.version || "";
       window.process.versions = window.process.versions || {};
-      window.process.platform = window.process.platform || 'browser';
-      
-      // Simple Buffer polyfill if needed by some SDK builds
-      if (!window.Buffer) {
-        window.Buffer = {
-          isBuffer: function() { return false; },
-          from: function() { return []; },
-          alloc: function() { return []; }
-        };
-      }
+      window.process.platform = window.process.platform || "browser";
     </script>
+
     <script>
       tailwind.config = {
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              dyslexic: ['Atkinson Hyperlegible', 'sans-serif'],
+              sans: ["Inter", "sans-serif"],
+              dyslexic: ["Atkinson Hyperlegible", "sans-serif"],
             },
             colors: {
               brand: {
-                50: '#f0f9ff',
-                100: '#e0f2fe',
-                500: '#0ea5e9',
-                600: '#0284c7',
-                700: '#0369a1',
-                900: '#0c4a6e',
+                50: "#f0f9ff",
+                100: "#e0f2fe",
+                500: "#0ea5e9",
+                600: "#0284c7",
+                700: "#0369a1",
+                900: "#0c4a6e",
               },
               accent: {
-                500: '#f59e0b',
-                600: '#d97706',
-              }
+                500: "#f59e0b",
+                600: "#d97706",
+              },
             },
-            animation: {
-              'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
-            },
-            keyframes: {
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              }
-            }
-          }
-        }
-      }
+          },
+        },
+      };
     </script>
+
     <style>
-      /* Custom focus styles for better accessibility */
       *:focus-visible {
         outline: 3px solid #f59e0b;
         outline-offset: 2px;
       }
-      
-      /* Parallax utilities */
       .parallax-section {
         background-attachment: fixed;
         background-position: center;
         background-repeat: no-repeat;
         background-size: cover;
       }
-      
-      /* Disable parallax on mobile for performance/compatibility */
       @media (max-width: 768px) {
         .parallax-section {
           background-attachment: scroll;
         }
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?external=react,react-dom",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react,react-dom",
-    "react": "https://esm.sh/react@18.2.0",
-    "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "@google/genai": "https://esm.sh/@google/genai?bundle"
-  }
-}
-</script>
-</head>
+  </head>
+
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-brand-200 selection:text-brand-900">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
